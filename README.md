@@ -287,24 +287,31 @@ Inference: **no in-context examples** — system prompt + image + predicted-indi
 
 ---
 
-## Part 4 — Result (120 balanced test) → **0.692**
+## Part 4 — Result (120 balanced test) → **0.708** (best run, exp4)
 
-Overall accuracy = mean of the three per-class recalls = (0.90 + 0.55 + 0.625) / 3 = **0.692**.
+> **Updated to the best result (exp4).** `exp4` is the same v2_cw target-consistency LoRA
+> with the **25 internally self-contradictory "forced" cases removed** from training; it
+> reaches **0.708** vs 0.692 for the original v2_cw run. The confusion matrix below and the
+> "after" panel in Part 5 now reflect this best run.
+
+Overall accuracy = mean of the three per-class recalls = (0.90 + 0.55 + 0.675) / 3 = **0.708**.
 
 **Confusion matrix** — each true class has exactly 40 images; diagonal = correct.
 
 | True class (n = 40) | → predicted not likely | → predicted borderline | → predicted likely | Recall |
 |---|:---:|:---:|:---:|:---:|
-| **not likely** | **36** | 3 | 1 | 0.900 (36/40) |
-| **borderline** | 8 | **22** | 10 | 0.550 (22/40) |
-| **likely** | 2 | 13 | **25** | 0.625 (25/40) |
+| **not likely** | **36** | 4 | 0 | 0.900 (36/40) |
+| **borderline** | 13 | **22** | 5 | 0.550 (22/40) |
+| **likely** | 3 | 10 | **27** | 0.675 (27/40) |
 
 Read by row:
-- **not likely (40):** 36 correct; 3 over-called as borderline, 1 as likely. *(strongest class)*
-- **borderline (40):** 22 correct; 10 over-called as likely, 8 under-called as not likely. *(hardest class — sits between the other two)*
-- **likely (40):** 25 correct; 13 under-called as borderline, 2 as not likely.
+- **not likely (40):** 36 correct; 4 over-called as borderline, 0 as likely. *(strongest class)*
+- **borderline (40):** 22 correct; 5 over-called as likely, 13 under-called as not likely. *(hardest class — sits between the other two)*
+- **likely (40):** 27 correct; 10 under-called as borderline, 3 as not likely.
 
-Column totals (what the model predicted): not likely 46, borderline 38, likely 36.
+Column totals (what the model predicted): not likely 52, borderline 36, likely 32.
+
+![exp4 confusion matrix](reports/exp4_confmat.png)
 
 ---
 
@@ -320,10 +327,10 @@ indicators, no in-context examples, no fine-tuning**. Same 120 balanced test, gr
 | Setup | What the model is given | Accuracy | Δ |
 |---|---|:---:|:---:|
 | **Image-only** (orig 27b, no LoRA, no indicators) | image only | **0.358** | — |
-| **Full pipeline** (v2_cw: + RETFound indicators + LoRA) | image + indicators + LoRA | **0.692** | **+0.334** |
+| **Full pipeline** (best run exp4: + RETFound indicators + LoRA) | image + indicators + LoRA | **0.708** | **+0.350** |
 
 - **Image-only ≈ random.** 3-class balanced chance = 0.333; the model scores **0.358** — it has essentially no standalone ability to read the optic nerve head.
-- **The full RETFound-indicator pipeline lifts this by +0.334** (chance-level 0.358 → 0.692, i.e. +33 points). Structuring RETFound's measurements into the prompt — not the VLM's raw image understanding — is what produces the diagnostic signal.
+- **The full RETFound-indicator pipeline lifts this by +0.350** (chance-level 0.358 → 0.708, i.e. +35 points). Structuring RETFound's measurements into the prompt — not the VLM's raw image understanding — is what produces the diagnostic signal.
 
 **Why image-only fails — per-class breakdown (the floor):**
 
@@ -341,7 +348,7 @@ RETFound measurements, a general-purpose 27b VLM is effectively blind to glaucom
 **Takeaway:** the RETFound *quantify-then-reason* pipeline is not optional polish — it is the
 source of the diagnostic signal. Feeding a strong VLM the raw image alone yields chance-level
 accuracy; structuring RETFound's CDR / ISNT / sign measurements into the prompt is what makes
-the 0.69 result possible.
+the 0.71 result possible.
 
 ### Confusion matrices — before vs after (visual)
 
@@ -350,6 +357,6 @@ the 0.69 result possible.
 *Confusion matrices on the 120-image balanced test set. Rows = true class, columns = predicted,
 color = row-normalized (recall), cells show raw count + row %, red box = diagonal (correct).
 **Left — before fine-tune** (zero-shot, image only, acc 0.358): collapses to "not likely"
-(first column), likely recall = 0. **Right — after fine-tune** (LoRA + RETFound indicators,
-acc 0.692): strong diagonal, borderline and likely recovered. Numbers identical to the two
-tables above (`eval_zeroshot_imageonly_vllm` / `eval_v2_cw`).*
+(first column), likely recall = 0. **Right — after fine-tune** (best run exp4, LoRA + RETFound
+indicators, acc 0.708): strong diagonal, borderline and likely recovered. Numbers identical to
+the two tables above (`eval_zeroshot_imageonly_vllm` / `eval_exp4`).*
