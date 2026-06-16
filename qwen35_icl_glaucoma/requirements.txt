@@ -1,0 +1,18 @@
+# Mirrors SHBI-Final-Project/requirements.txt for the Qwen3.5-VL inference path.
+# If you can reuse the existing venv on yuzhench@100.109.238.5
+# (~/Desktop/SHBI-Final-Project/.venv), you don't need to install anything.
+
+torch>=2.2.0
+transformers>=4.57.0
+# If installed transformers is older, pull from source for Qwen3.5 classes:
+#   pip install --upgrade git+https://github.com/huggingface/transformers
+accelerate>=0.30.0
+bitsandbytes>=0.43.0          # only needed if --load-in-4bit
+qwen-vl-utils>=0.0.8
+sentencepiece>=0.2.0
+pillow>=10.0.0
+huggingface_hub>=0.23.0
+pandas>=2.2.0
+numpy>=1.26.0
+tqdm>=4.66.0
+pyyaml>=6.0
