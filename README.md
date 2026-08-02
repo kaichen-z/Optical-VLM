@@ -1,5 +1,15 @@
 # Glaucoma-CoT
 
+Official code for the paper **"Learning Ophthalmologist Clinical Reasoning for
+Glaucoma Diagnosis from Fundus Images"**.
+
+Kaichen Zhou, Yuzhen Chen, Elif Yildiz, Min Shi, David Dai, Grace Chen, Jiale Zheng,
+He Wang, Fangneng Zhan, Chhavi Saini, Lucy Q. Shen, Yike Guo, Paul Pu Liang, Mengyu Wang.
+*npj Digital Medicine* (under review), 2026.
+
+[Project page](https://glaucoma-cot.github.io) ·
+[Paper](https://www.researchgate.net/publication/410997386_Learning_Ophthalmologist_Clinical_Reasoning_for_Glaucoma_Diagnosis_from_Fundus_Images)
+
 Glaucoma chain-of-thought diagnosis from a single fundus photograph.
 
 A fundus image is first passed through a frozen RETFound backbone with trained
@@ -103,4 +113,17 @@ python inference.py \
     --model-id google/medgemma-27b-it \
     --adapter medgemma27b_finetune/outputs/mg27_lora \
     --image path/to/fundus.jpg
+```
+
+## Citation
+
+```bibtex
+@article{zhou2026glaucoma,
+  title   = {Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images},
+  author  = {Zhou, Kaichen and Chen, Yuzhen and Yildiz, Elif and Shi, Min and Dai, David
+             and Chen, Grace and Zheng, Jiale and Wang, He and Zhan, Fangneng and Saini, Chhavi
+             and Shen, Lucy Q. and Guo, Yike and Liang, Paul Pu and Wang, Mengyu},
+  journal = {npj Digital Medicine (under review)},
+  year    = {2026}
+}
 ```

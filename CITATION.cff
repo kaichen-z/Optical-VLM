@@ -1,0 +1,69 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper below."
+title: "Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images"
+authors:
+  - family-names: Zhou
+    given-names: Kaichen
+  - family-names: Chen
+    given-names: Yuzhen
+  - family-names: Yildiz
+    given-names: Elif
+  - family-names: Shi
+    given-names: Min
+  - family-names: Dai
+    given-names: David
+  - family-names: Chen
+    given-names: Grace
+  - family-names: Zheng
+    given-names: Jiale
+  - family-names: Wang
+    given-names: He
+  - family-names: Zhan
+    given-names: Fangneng
+  - family-names: Saini
+    given-names: Chhavi
+  - family-names: Shen
+    given-names: "Lucy Q."
+  - family-names: Guo
+    given-names: Yike
+  - family-names: Liang
+    given-names: "Paul Pu"
+  - family-names: Wang
+    given-names: Mengyu
+year: 2026
+journal: "npj Digital Medicine (under review)"
+url: "https://glaucoma-cot.github.io"
+preferred-citation:
+  type: article
+  title: "Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images"
+  journal: "npj Digital Medicine (under review)"
+  year: 2026
+  authors:
+    - family-names: Zhou
+      given-names: Kaichen
+    - family-names: Chen
+      given-names: Yuzhen
+    - family-names: Yildiz
+      given-names: Elif
+    - family-names: Shi
+      given-names: Min
+    - family-names: Dai
+      given-names: David
+    - family-names: Chen
+      given-names: Grace
+    - family-names: Zheng
+      given-names: Jiale
+    - family-names: Wang
+      given-names: He
+    - family-names: Zhan
+      given-names: Fangneng
+    - family-names: Saini
+      given-names: Chhavi
+    - family-names: Shen
+      given-names: "Lucy Q."
+    - family-names: Guo
+      given-names: Yike
+    - family-names: Liang
+      given-names: "Paul Pu"
+    - family-names: Wang
+      given-names: Mengyu
