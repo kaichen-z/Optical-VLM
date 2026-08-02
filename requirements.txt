@@ -1,8 +1,11 @@
-torch>=2.1
-torchvision
-timm
-transformers>=4.44
-peft>=0.11
-accelerate
-numpy
-pillow
+# Pinned to the environment the paper was run in.
+# torch/torchvision are the CUDA 12.8 builds (+cu128); install the matching CUDA
+# wheels from https://pytorch.org if your setup differs.
+torch==2.11.0
+torchvision==0.26.0
+timm==1.0.27
+transformers==5.1.0
+peft==0.19.1
+accelerate==1.14.0
+numpy==2.2.6
+pillow==12.2.0
