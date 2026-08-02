@@ -30,8 +30,23 @@ inference.py             run the full image -> reasoning-chain pipeline
 pip install -r requirements.txt
 ```
 
-You also need the RETFound MAE ViT-L/16 (`natureCFP`) weights and a MedGemma-27B
-snapshot. Point `RETFOUND_CKPT` at the former and pass the latter with `--model-id`.
+## Base models
+
+Both stages are trained on top of public pretrained checkpoints. We do not release
+our own trained weights at this time; the checkpoints below are what you finetune
+*from*.
+
+| stage | base checkpoint | notes |
+|---|---|---|
+| Stage 1 (RETFound) | [`YukunZhou/RETFound_mae_natureCFP`](https://huggingface.co/YukunZhou/RETFound_mae_natureCFP) | MAE ViT-L/16 (`RETFound_mae_natureCFP.pth`). Non-commercial license. |
+| Stage 2 (MedGemma-27B) | [`google/medgemma-27b-it`](https://huggingface.co/google/medgemma-27b-it) | **Gated** — accept the Health AI Developer Foundations terms and authenticate before download. |
+
+```
+huggingface-cli download YukunZhou/RETFound_mae_natureCFP
+huggingface-cli download google/medgemma-27b-it        # requires accepting the gated terms first
+```
+
+Point `RETFOUND_CKPT` at the RETFound `.pth` and pass the MedGemma snapshot with `--model-id`.
 
 ## Stage 1 — RETFound heads
 
