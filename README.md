@@ -1,362 +1,299 @@
-# Optical-VLM — Glaucoma Chain-of-Thought Diagnosis from Fundus Photographs
+<div align="center">
+<h1>Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images</h1>
 
-A two-stage **quantify-then-reason** pipeline for glaucoma assessment:
+A reasoning-driven vision–language framework that writes a <ins>**six-step clinical chain-of-thought**</ins><br>
+before making the glaucoma decision — plus <ins>**BIOVLM**</ins>, the first expert-annotated<br>
+glaucoma reasoning dataset (1,077 fundus photographs).
 
-1. **Stage 1 — RETFound indicator heads.** A frozen RETFound ViT-L/16 backbone with small
-   trained attention-pooling heads predicts clinical indicators from a fundus image
-   (cup-to-disc ratio, ISNT rim order + per-quadrant status, glaucomatous signs).
-2. **Stage 2 — MedGemma-27B + LoRA.** The image **plus** the Stage-1 predicted indicators are
-   fed to a LoRA-fine-tuned MedGemma-27B vision-language model, which produces a **6-step
-   chain-of-thought** and a 3-class diagnosis (*not likely / borderline / likely*).
+<a href="https://www.researchgate.net/publication/410997386_Learning_Ophthalmologist_Clinical_Reasoning_for_Glaucoma_Diagnosis_from_Fundus_Images"><img src="https://img.shields.io/badge/Paper-npj%20Digital%20Medicine-b31b1b" alt="Paper"></a>
+<a href="https://glaucoma-cot.github.io/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
+<a href="https://scholar.google.com/citations?view_op=view_citation&hl=en&user=8S6_34oAAAAJ&sortby=pubdate&citation_for_view=8S6_34oAAAAJ:UxriW0iASnsC"><img src="https://img.shields.io/badge/Google_Scholar-4285F4" alt="Google Scholar"></a>
+<a href="https://github.com/kaichen-z/Optical-VLM/stargazers"><img src="https://img.shields.io/github/stars/kaichen-z/Optical-VLM?style=flat&color=blue" alt="Stars"></a>
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  fundus image                                            │
-│      │                                                   │
-│      ├─► RETFound (frozen) + 3 task heads ──► indicators │   ← Stage 1
-│      │        • CDR  (vertical / horizontal, numeric)    │
-│      │        • rim  (ISNT order + per-quadrant status)  │
-│      │        • 6 glaucomatous signs                     │
-│      ▼                                                   │
-│  image + predicted indicators                           │
-│      │                                                   │
-│      ▼                                                   │
-│  MedGemma-27b + LoRA  ──►  6-step CoT  ──►  diagnosis    │   ← Stage 2
-└──────────────────────────────────────────────────────────┘
-```
+**[Harvard Ophthalmology AI Lab, Harvard Medical School](https://ophai.hms.harvard.edu/)**;
+**[Media Lab, MIT](https://www.media.mit.edu/)**;
+**[HKUST](https://cse.hkust.edu.hk/)**;
+**[University of Louisiana at Lafayette](https://louisiana.edu/)**;
+**[Istanbul Medipol University](https://www.medipol.edu.tr/en)**
 
-The best model (`exp4`, = the v2_cw target-consistency LoRA trained with 25 internally
-self-contradictory "forced" cases removed) reaches **0.708** on the 120-image balanced test;
-the headline configuration documented in the report below (`v2_cw`) reaches **0.692**.
+[Kaichen Zhou](https://kaichen-z.github.io/)\*, Yuzhen Chen\*, Elif Yildiz\*, Min Shi, David Dai, [Grace Chen](https://gracee-chen.github.io/), Jiale Zheng, He Wang, [Fangneng Zhan](https://fnzhan.com/), Chhavi Saini, Lucy Q. Shen, Yike Guo, [Paul Pu Liang†](https://pliang279.github.io/), [Mengyu Wang†](https://wang.hms.harvard.edu/team/dr-wang/)
 
----
+**(\*: Equal contribution&nbsp;&nbsp;†: Corresponding authors)**
+</div>
 
-## Repository structure
-
-```
-.
-├── retfound_header_finetune/   # STAGE 1 — RETFound indicator-head training
-├── qwen35_icl_glaucoma/        # STAGE 2 — MedGemma-27B LoRA CoT training + eval
-├── retfound_weights/           # RETFound backbone .pth  (not in repo — see below)
-├── reports/                    # progress reports (Jun8 report copied below)
-├── PROGRESS_LOG.md             # append-only experiment log
-└── README.md                   # this file
+```bibtex
+@article{zhou2026glaucoma,
+  title   = {Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images},
+  author  = {Zhou, Kaichen and Chen, Yuzhen and Yildiz, Elif and Shi, Min and Dai, David
+             and Chen, Grace and Zheng, Jiale and Wang, He and Zhan, Fangneng and Saini, Chhavi
+             and Shen, Lucy Q. and Guo, Yike and Liang, Paul Pu and Wang, Mengyu},
+  journal = {npj Digital Medicine (under review)},
+  year    = {2026}
+}
 ```
 
-> **Not tracked in git** (too large / regenerable): RETFound backbone weights
-> (`retfound_weights/*.pth`, ~3.95 GB), trained adapters and eval outputs (`*/outputs/`),
-> SFT data and indicator JSONs (`*/DATA/`), and fundus images.
+> **Which branch do I want?** The clean camera-ready code for the paper lives on the
+> [**`camera_ready_code`**](https://github.com/kaichen-z/Optical-VLM/tree/camera_ready_code) branch —
+> every command in this README refers to it. This `main` branch keeps an earlier exploratory
+> three-class codebase (different module names, three-level *not likely / borderline / likely*
+> label set, older result); it is preserved for history in
+> [`reports/legacy-3class-experiment.md`](reports/legacy-3class-experiment.md) and is **not** the
+> code the paper reports.
 
----
+## Overview
 
-### Stage 1 — `retfound_header_finetune/`
+Ophthalmologists do not classify a fundus photograph in one step — they evaluate optic-nerve-head
+characteristics in sequence and only then commit to a diagnosis. Existing AI screening systems skip
+that process. This repository implements a framework that reproduces it explicitly:
 
-Frozen RETFound backbone → trainable attention-pooling + linear head, one per indicator task.
+1. **Stage 1 — RETFound indicator heads.** A **frozen** RETFound ViT-L/16 backbone with trained
+   pooling + prediction heads turns the image into *structured clinical evidence*: vertical /
+   transverse cup-to-disc ratio, ISNT rim ordering, per-quadrant rim status, six glaucomatous
+   signs, and an initial diagnostic probability.
+2. **Stage 2 — MedGemma-27B + LoRA.** The image **and** that evidence block are handed to a
+   LoRA-fine-tuned MedGemma-27B, which writes a **six-step reasoning report** ending in a binary
+   glaucoma / non-glaucoma decision.
 
-**Shared infrastructure (required by every trainer):**
+The backbone is the same one used by conventional screening pipelines, so the gain comes from the
+added clinical reasoning, not from a stronger visual encoder.
 
-| File | Role |
+```
+fundus image
+    │
+    ├─► RETFound (frozen) + pooling + heads      ──►  CDR (vertical / transverse)
+    │                                                 ISNT rim order
+    │                                                 per-quadrant rim status
+    │                                                 6 glaucomatous signs
+    │                                                 diagnostic probability
+    ▼
+image + structured clinical evidence
+    │
+    ▼
+MedGemma-27B + LoRA   ──►  six-step reasoning report  ──►  glaucoma / non-glaucoma
+```
+
+### The six-step chain-of-thought
+
+| Step | Content |
 |---|---|
-| `config.py` | central config — RETFound checkpoint path, backbone architecture, data paths |
-| `retfound_backbone.py` | loads the frozen RETFound ViT-L/16 encoder (`load_retfound`) |
-| `heads.py` | the FC head modules (linear / MLP) that sit on top of the pooling |
-| `baseline.py`, `tier1.py`, `tier2a.py`, `tier2b.py`, `tier3.py` | the 5 pooling variants (mean / learned / gated-attn / single-query-attn / multi-head-attn) compared per task |
-| `make_folds.py` | 5-fold split used to produce out-of-fold (OOF) train predictions |
+| 1 | **Image quality** — focus, contrast, artifacts, disc-margin clarity |
+| 2 | **CDR evaluation** — vertical & transverse cup-to-disc ratio vs. the glaucomatous cutoff |
+| 3 | **ISNT rule** — rank inferior / superior / nasal / temporal rim widths, flag violations |
+| 4 | **Glaucomatous signs** — notching, RNFL defect, bayoneting, β-zone / peripapillary atrophy, disc hemorrhage |
+| 5 | **Structural summary** — integrate the findings, weigh them against the automated probability |
+| 6 | **Final classification** — binary decision with justification |
 
-**Critical-path trainers (the 3 heads used by the best result):**
+## Results
 
-| File | Indicator | Dataset module |
-|---|---|---|
-| `train.py` | numeric CDR (vertical/horizontal regression) | `dataset.py` |
-| `train_order_abn.py` | joint ISNT order + per-quadrant rim abnormality | `dataset_order_abn.py` |
-| `train_signs.py` | 6 glaucomatous signs (3-class each) | `dataset_signs.py` |
+All numbers on the 160-image test split (80 glaucoma / 80 non-glaucoma).
 
-**Indicator generation (turns head outputs into the JSON Stage 2 consumes):**
+**Report correctness & agreement with expert reports**
 
-| File | Role |
-|---|---|
-| `assemble_oof.py` | **builds `predicted_indicators_*_newheads.json`** (the indicator file the best result uses); train = 5-fold OOF, test = full-613 heads |
-| `predict_heads_train.py`, `predict_indicators_imagelist.py`, `build_predicted_indicators.py` | head inference / alternate assembly entry points |
-
-*Other head trainers* — `train_isnt.py`, `train_order.py`, `train_cdr_verdict.py`,
-`train_tri_head.py`, `train_quad_head.py`, `train_quad_reg_head.py`, `train_laterality.py`,
-`train_rim_flip.py`, `train_rim_multi.py` (+ their `dataset_*.py`) — are alternative head
-architectures explored during development; they are **not** on the 0.708 critical path.
-
----
-
-### Stage 2 — `qwen35_icl_glaucoma/`
-
-MedGemma-27B-it with attention-only LoRA, fed image + indicator block, trained to emit a
-6-step CoT ending in the ground-truth diagnosis.
-
-| File | Role |
-|---|---|
-| `assemble_sft_tc.py` | **builds `sft_train_tc.jsonl`** — the target-consistency CoT training set (Step 2–6 rewritten to reason from the OOF-predicted indicators, conclude the GT label) |
-| `train_medgemma27b_tc.py` | **LoRA training engine.** Self-contained. Flags: `--class-weighted`, `--exclude-ids` (drop e.g. the forced cases), `--bl-mult` (extra borderline weight), batch / grad-accum / lr / epochs |
-| `eval_medgemma27b_tc.py` | evaluation on the 120 balanced test (HF generate, greedy) — produces `summary.json` (accuracy + confusion) |
-| `run_qwen35_incontext.py` | **dependency of the evaluator** (`parse_diagnosis`, `load_test_records`); legacy in-context script reused only for these helpers |
-| `run_4exp.sh` | orchestration script that trained the best model (`exp4`) — note it also contains the `exp1–3` borderline-weight ablations |
-| `requirements.txt`, `README.md` | environment / package docs |
-
-> **Note on file reuse:** `train_medgemma27b_tc.py` is the *single* training engine used for both
-> the headline result and every ablation (image-only, big-batch, quad/insample indicator
-> variants); the difference between runs is the command-line arguments, not the file.
-
----
-
-## Critical path for the best result
-
-```
-STAGE 1
-  train.py            ┐
-  train_order_abn.py  ├─► trained heads ─► assemble_oof.py ─► predicted_indicators_*_newheads.json
-  train_signs.py      ┘
-
-STAGE 2
-  assemble_sft_tc.py ─► sft_train_tc.jsonl
-        │
-        ▼
-  train_medgemma27b_tc.py  (+ --exclude-ids forced_ids.txt   for exp4)
-        │
-        ▼  outputs/<adapter>/
-  eval_medgemma27b_tc.py   (+ predicted_indicators_test_newheads.json + test_120 images)
-        │
-        ▼  outputs/eval_*/summary.json   → accuracy 0.692 (v2_cw) / 0.708 (exp4)
-```
-
----
----
-
-<!-- ===================================================================== -->
-<!-- The section below is copied verbatim from reports/Jun8-report.md       -->
-<!-- (image paths adjusted to point into reports/).                         -->
-<!-- ===================================================================== -->
-
-# Jun 8 — Progress Report
-
-**A target-consistency LoRA on MedGemma-27b-it, fed RETFound-predicted clinical indicators, reaches 0.692 on the 120 balanced test.**
-
-- Model: MedGemma-27b-it + LoRA  
-- Test set: 120 balanced (40 not-likely / 40 borderline / 40 likely).
-- Indicators predicted by our RETFound heads  
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  fundus image                                            │
-│      │                                                   │
-│      ├─► RETFound (frozen) + 3 task heads ──► indicators │
-│      │        • CDR  (vertical / horizontal, numeric)    │
-│      │        • rim  (ISNT order + per-quadrant status)  │
-│      │        • 6 glaucomatous signs                     │
-│      ▼                                                   │
-│  image + predicted indicators                           │
-│      │                                                   │
-│      ▼                                                   │
-│  MedGemma-27b + LoRA  ──►  6-step CoT  ──►  diagnosis    │
-└──────────────────────────────────────────────────────────┘
-```
-
----
-
-## Part 1 — RETFound indicator heads
-
-Shared setup: **RETFound ViT-Large/16 backbone fully FROZEN**; only a small
-**attention-pooling + linear head** is trained per task (5 poolings compared, best kept).
-Each head trained/scored on the canonical 613-train / 120-test split.
-
-| Indicator (→ CoT step) | Head (pooling) | Task type | Individual test score |
-|---|---|---|---|
-| **CDR** vertical+horizontal (Step 2) | tier2a (gated attn) | regression | **MAE 0.075** (v 0.079 / h 0.070), Pearson 0.86 / 0.83 |
-| **rim** ISNT order + per-quad abnormality (Step 3) | tier3 (8-head cross-attn), joint order+abn | rank + 3-class | see breakdown below |
-| **6 signs** (Step 4) | tier1 | 3-class ×5 | mean macro-F1 **0.562** |
-
-**rim head detail** (orderabn tier3, 120-test):
-
-- per-quadrant abnormality (normal/mild/severe) macro-F1:
-
-  | Inferior | Superior | Nasal | Temporal | mean |
-  |:---:|:---:|:---:|:---:|:---:|
-  | 0.616 | 0.636 | 0.539 | 0.497 | **0.572** (acc 0.635) |
-
-- ISNT order: **exact-order 0.192** (all 4 quadrants in correct relative rank) · **gap-pair-acc 0.785** (gap-weighted pairwise correctness).
-  Nasal/Temporal are the hardest (lowest F1) — consistent with the 120-test being a left/right-eye mix where N↔T can swap.
-
----
-
-## Part 2 — LoRA data preparation
-
-**(a) Indicator parity — train indicators must be as noisy as test (the key trick):**
-- **Train indicators = 5-fold OOF** — each train image is scored by a head that did *not*
-  see it, so train indicators carry **test-level noise** (not optimistically clean).
-- **Test indicators = full-613 heads** (genuinely held out).
-- → the LoRA learns to reason from *noisy* indicators, matching deployment.
-
-**(b) Target-consistency rewriting (613 train):** each CoT is rewritten so Step 2–6 reason
-**from the OOF-predicted indicators** and conclude the **ground-truth** diagnosis (Step 1 kept
-verbatim). This teaches the model to weigh noisy indicators against the image rather than trust
-them blindly. Conflict cases flagged (consistent 413 / robust 175 / forced 25).
-
-### Worked example — train id 001 (GT = not likely), verbatim
-
-**Input fed to the LoRA** (system + user prompt, exact):
-
-> **System:** You are an expert ophthalmologist assessing a retinal fundus photograph for glaucoma. You are given the fundus image together with automated measurements (cup-to-disc ratios, the ISNT rim order, per-quadrant rim status, and glaucomatous signs). These measurements are produced by an automated model and may be imprecise; weigh both the image and the measurements to reach your assessment.
->
-> **User:** Analyze the optic nerve head and generate a clinical reasoning chain to assess for possible glaucoma. Give your final diagnosis in one of the following categories: not likely / borderline / likely.
->
-> Measured clinical indicators for THIS patient (verified; use them in your analysis):
-> Vertical CDR: 0.42
-> Horizontal CDR: 0.486
-> ISNT observed order: N>I>S>T
-> Per-quadrant rim status: Inferior: normal; Superior: normal; Nasal: normal; Temporal: normal
-> Notching: absent
-> RNFL defect: absent
-> Disc hemorrhage: absent
-> Bayoneting sign: absent
-> Beta zone atrophy: absent
-> Peripapillary atrophy: absent
-
-**Original expert CoT → training target (rewritten), step by step (verbatim, full text):**
-
-| Step | Original CoT (expert annotation) | Training target (rewritten from the indicators above) |
-|---|---|---|
-| Step1 | The fundus image is of sufficient diagnostic quality. The optic disc margins are clearly visible with minimal shadowing. The neuroretinal rim and cup boundaries are identifiable and adequate for evaluation. | The fundus image is of sufficient diagnostic quality. The optic disc margins are clearly visible with minimal shadowing. The neuroretinal rim and cup boundaries are identifiable and adequate for evaluation. |
-| Step2 | The vertical cup-to-disc ratio (CDR) is measured at 0.3741, which is within the normal physiological range (≤0.5). The horizontal (transverse) CDR is 0.4797, which is near the upper limit of normal but not pathologic. These measurements are not suggestive of glaucomatous cupping. | The vertical cup-to-disc ratio (CDR) is 0.42, which is within the normal physiological range (≤0.5). The horizontal (transverse) CDR is 0.486, near the upper limit of normal but not pathologic. These measurements are not suggestive of glaucomatous cupping. |
-| Step3 | The rim thickness ratios are as follows — Superior: 0.3130, Inferior: 0.2977, Nasal: 0.3577, Temporal: 0.1504. The observed order is: Nasal > Superior > Inferior > Temporal. This partially follows the expected ISNT rule.<br>The expected ISNT rule states that the rim thickness should follow the order: Inferior > Superior > Nasal > Temporal.<br>When assessed against normative data: - Superior rim (0.3130) is within normal limits (0.30–0.45). - Inferior rim (0.2977) is at the lower edge of normal (0.30–0.45). - Nasal rim (0.3577) is within normal range (0.22–0.36). - Temporal rim (0.1504) is below normal range (0.18–0.32), indicating mild thinning.<br>Overall, the ISNT rule is mostly preserved with a slight thinning temporally, but no glaucomatous pattern is evident. | The observed ISNT order is N>I>S>T, against the expected Inferior > Superior > Nasal > Temporal. Per-quadrant rim status: Inferior: normal; Superior: normal; Nasal: normal; Temporal: normal. Although the nasal rim ranks highest rather than the inferior, every quadrant is of normal thickness with no thinning, so the neuroretinal rim is structurally preserved and no glaucomatous pattern is evident. |
-| Step4 | Let us assess for additional glaucomatous features: Notching: Not observed RNFL defect: Not visible Disc hemorrhage: Not present Bayoneting sign: Not seen Beta-zone atrophy: Not present Peripapillary atrophy: Not observed<br>No glaucomatous signs are evident in this image. | Assessment for additional glaucomatous features — Notching: Not observed; RNFL defect: Not visible; Disc hemorrhage: Not present; Bayoneting sign: Not seen; Beta-zone atrophy: Not present; Peripapillary atrophy: Not observed. No glaucomatous signs are evident in this image. |
-| Step5 | The optic disc demonstrates normal vertical and horizontal CDRs. Rim thickness is mostly within normal limits, with slight thinning in the temporal quadrant. No additional glaucomatous signs are noted. | The optic disc demonstrates normal vertical and horizontal CDRs and a neuroretinal rim that is within normal limits in all four quadrants. No additional glaucomatous signs are noted. |
-| Step6 | The eye is not likely to have glaucoma based on normal CDR values, largely preserved ISNT rule, and absence of glaucomatous structural signs. Continued routine monitoring is recommended. | The eye is not likely to have glaucoma based on normal CDR values, a preserved neuroretinal rim, and absence of glaucomatous structural signs. Continued routine monitoring is recommended. |
-| Diagnosis | Not likely | Not likely |
-
-Step1 is reused unchanged; Step2 uses the predicted CDR (0.42 / 0.486) in place of the original measured numbers; Step3 switches from absolute rim ratios to the predicted ISNT order + per-quadrant status; the diagnosis stays the ground truth.
-
----
-
-## Part 3 — LoRA fine-tuning
-
-**Hyper-parameters**
-
-| | value |
-|---|---|
-| base | MedGemma-27b-it, bf16, 2-GPU device_map |
-| LoRA target | **attention only** (q/k/v/o_proj) of the language model |
-| rank / alpha / dropout | **r=8 / α=16 (scale ×2) / 0.05** |
-| vision tower | frozen |
-| trainable params | 18.25 M (**0.0665 %**) |
-| class imbalance | **inverse-freq class-weighted loss** (per-sample weight not-likely 0.31 / borderline 1.27 / likely 1.42); oversample OFF |
-| epochs / schedule | 8 epochs, cosine, warmup 0.05 |
-| lr / batch | 1e-4 / batch 1 × grad-accum 8 |
-| early stop | best eval-loss **0.265 @ epoch 4.6**, patience 4 |
-
-Inference: **no in-context examples** — system prompt + image + predicted-indicator block → 6-step CoT → diagnosis (greedy).
-
-## Live inference example (test id 026 — predicted *likely*, ground truth *likely* ✓)
-
-<img src="reports/Jun8_example_026.jpg" width="260">
-
-**Input prompt** — image + RETFound-predicted indicators (no ground truth):
-
-> *System:* You are an expert ophthalmologist assessing a retinal fundus photograph for glaucoma. You are given the fundus image together with automated measurements (cup-to-disc ratios, the ISNT rim order, per-quadrant rim status, and glaucomatous signs). These measurements are produced by an automated model and may be imprecise; weigh both the image and the measurements to reach your assessment.
->
-> *User:* Analyze the optic nerve head and generate a clinical reasoning chain to assess for possible glaucoma. Give your final diagnosis in one of the following categories: not likely / borderline / likely.
->
-> Measured clinical indicators for THIS patient (verified; use them in your analysis):
-> Vertical CDR: 0.737
-> Horizontal CDR: 0.658
-> ISNT observed order: N>S>I>T
-> Per-quadrant rim status: Inferior: severe thinning; Superior: severe thinning; Nasal: severe thinning; Temporal: severe thinning
-> Notching: present
-> RNFL defect: present
-> Disc hemorrhage: absent
-> Bayoneting sign: present
-> Beta zone atrophy: present
-> Peripapillary atrophy: present
-
-**Output — VLM (MedGemma-27b + LoRA, greedy) vs ground-truth expert CoT**, step by step (verbatim):
-
-| Step | Ground-truth CoT (expert) | VLM output |
-|---|---|---|
-| Step1 | The fundus image is of adequate diagnostic quality. The optic disc margins are generally visible, although slight peripheral shadowing is present. No artifact significantly impairs evaluation of the optic nerve head. | The fundus image is of sufficient diagnostic quality. The optic disc margins are clearly visible, and the cup and rim boundaries are well defined. There are no significant artifacts or obstructions affecting evaluation. |
-| Step2 | The vertical CDR is 0.789, markedly elevated and exceeds the glaucomatous threshold. The horizontal CDR is 0.636, also significantly enlarged. These findings indicate substantial cupping consistent with glaucomatous optic nerve damage. | The vertical CDR is 0.74 and the horizontal CDR is 0.66, both markedly elevated. This degree of cupping is highly suggestive of glaucomatous excavation. |
-| Step3 | Rim thickness ratios — Inferior 0.0620, Superior 0.1364, Nasal 0.0818, Temporal 0.2545. Expected order Inferior > Superior > Nasal > Temporal; observed Temporal > Superior > Nasal > Inferior, severely violating the ISNT rule.<br>Superior, Inferior and Nasal rims are all well below normal (advanced loss); Temporal is comparatively spared.<br>The ISNT rule is severely violated, rim thinning prominent in multiple quadrants. | The observed ISNT order is N>S>I>T (expected Inferior > Superior > Nasal > Temporal). Per-quadrant rim status: Inferior: severe thinning; Superior: severe thinning; Nasal: severe thinning; Temporal: severe thinning. The ISNT rule is violated and all quadrants show severe thinning, a diffuse pattern consistent with advanced glaucomatous rim loss. |
-| Step4 | Notching: Present; RNFL defect: Visible; Disc hemorrhage: Not observed; Bayoneting sign: Present; Beta-zone atrophy: Present; Peripapillary atrophy: Marked.<br>Multiple structural signs of glaucomatous damage are evident. | Notching: Present; RNFL defect: Present; Disc hemorrhage: Absent; Bayoneting sign: Present; Beta-zone atrophy: Present; Peripapillary atrophy: Present. Notching, an RNFL defect, bayoneting, and peripapillary atrophy are all present and support a glaucomatous diagnosis. |
-| Step5 | The optic nerve head shows advanced cupping with severe rim loss, especially inferior and superior. The ISNT rule is clearly violated. Notching, RNFL defect, bayoneting, and marked peripapillary atrophy confirm significant optic nerve damage. | The optic nerve head shows a large cup, diffuse severe rim thinning with ISNT violation, and multiple supporting glaucomatous signs. The picture is clearly consistent with glaucomatous optic neuropathy. |
-| Step6 | The eye is likely to have glaucoma based on markedly elevated CDR, severe ISNT violation, diffuse rim thinning, and multiple glaucomatous features. Immediate clinical evaluation and therapeutic intervention are recommended. | The eye is likely to have glaucoma, supported by an elevated CDR, diffuse severe rim thinning, ISNT violation, and multiple corroborating signs. Confirmatory visual field and OCT testing are warranted. |
-| Diagnosis | Likely | Likely |
-
----
-
-## Part 4 — Result (120 balanced test) → **0.708** (best run, exp4)
-
-> **Updated to the best result (exp4).** `exp4` is the same v2_cw target-consistency LoRA
-> with the **25 internally self-contradictory "forced" cases removed** from training; it
-> reaches **0.708** vs 0.692 for the original v2_cw run. The confusion matrix below and the
-> "after" panel in Part 5 now reflect this best run.
-
-Overall accuracy = mean of the three per-class recalls = (0.90 + 0.55 + 0.675) / 3 = **0.708**.
-
-**Confusion matrix** — each true class has exactly 40 images; diagonal = correct.
-
-| True class (n = 40) | → predicted not likely | → predicted borderline | → predicted likely | Recall |
+| Metric | **Ours** | Qwen3.5-VL | Claude | GPT-5.5 |
 |---|:---:|:---:|:---:|:---:|
-| **not likely** | **36** | 4 | 0 | 0.900 (36/40) |
-| **borderline** | 13 | **22** | 5 | 0.550 (22/40) |
-| **likely** | 3 | 10 | **27** | 0.675 (27/40) |
+| CDR MAE ↓ | **0.070** | 0.102 | 0.135 | 0.127 |
+| ISNT Kendall distance ↓ | **1.73** | 2.07 | 2.27 | n/a |
+| Rim-level macro-F1 ↑ | **0.656** | 0.512 | 0.510 | 0.373 |
+| Signs macro-F1 ↑ | **0.613** | 0.501 | 0.465 | 0.375 |
+| BERTScore-F1 ↑ | **0.874** | 0.867 | 0.869 | 0.866 |
+| ROUGE-Lsum ↑ | 0.454 | 0.416 | **0.461** | 0.439 |
 
-Read by row:
-- **not likely (40):** 36 correct; 4 over-called as borderline, 0 as likely. *(strongest class)*
-- **borderline (40):** 22 correct; 5 over-called as likely, 13 under-called as not likely. *(hardest class — sits between the other two)*
-- **likely (40):** 27 correct; 10 under-called as borderline, 3 as not likely.
+**Diagnosis (balanced accuracy)**
 
-Column totals (what the model predicted): not likely 52, borderline 36, likely 32.
+| Model | Bal. Acc. | 95% CI |
+|---|:---:|:---:|
+| **Ours (VLM)** | **94.7%** | 90.6–98.1 |
+| RetiZero | 93.6% | 88.1–98.0 |
+| RETFound | 93.1% | 87.6–97.5 |
+| DINOv2-L | 84.7% | 77.1–91.2 |
+| Qwen3.5-VL | 84.3% | 78.8–89.5 |
+| Claude | 74.4% | 67.5–81.0 |
+| GPT-5.5 | 71.9% | 65.1–78.2 |
 
-![exp4 confusion matrix](reports/exp4_confmat.png)
+**Ablations — the reasoning stage is what carries the diagnosis**
 
----
+| Configuration | Bal. Acc. | Sens. | Spec. |
+|---|:---:|:---:|:---:|
+| Full framework | **94.69%** | 92.88% | 96.50% |
+| Abl. 1 — image only | 83.75% | 97.50% | 70.00% |
+| Abl. 2 — image + diagnosis probability only | 70.63% | 98.75% | 42.50% |
 
-## Part 5 — Ablation: how much do the RETFound indicators actually buy us?
+| Leave-one-indicator-out | Bal. Acc. |
+|---|:---:|
+| Ours (all indicators) | **94.69%** |
+| − per-quadrant rim status | 94.38% |
+| − ISNT rim ordering | 94.37% |
+| − glaucomatous signs | 93.75% |
+| − cup-to-disc ratio | 92.50% |
 
-To prove the indicators (not the VLM's raw image understanding) are what drive the result,
-we ran the **bare floor**: the *original* MedGemma-27b weights (**no LoRA**), given **only
-the fundus image** + a minimal prompt asking for a 3-level glaucoma diagnosis — **no
-indicators, no in-context examples, no fine-tuning**. Same 120 balanced test, greedy decoding.
+CDR is the single most informative cue; every indicator still contributes complementary signal.
 
-**Floor vs. full pipeline:**
+## BIOVLM dataset
 
-| Setup | What the model is given | Accuracy | Δ |
-|---|---|:---:|:---:|
-| **Image-only** (orig 27b, no LoRA, no indicators) | image only | **0.358** | — |
-| **Full pipeline** (best run exp4: + RETFound indicators + LoRA) | image + indicators + LoRA | **0.708** | **+0.350** |
+1,077 color fundus photographs from the public **LAG** and **Papila** datasets, each paired with a
+complete expert-authored six-step reasoning report (321.6 ± 46.3 words) and a binary label.
 
-- **Image-only ≈ random.** 3-class balanced chance = 0.333; the model scores **0.358** — it has essentially no standalone ability to read the optic nerve head.
-- **The full RETFound-indicator pipeline lifts this by +0.350** (chance-level 0.358 → 0.708, i.e. +35 points). Structuring RETFound's measurements into the prompt — not the VLM's raw image understanding — is what produces the diagnostic signal.
+| Characteristic | Value (glaucoma / non-glaucoma) |
+|---|---|
+| Fundus images | 1,077 (430 / 647) |
+| LAG database | 659 (343 / 316) |
+| Papila dataset | 418 (87 / 331) |
+| Training split | 825 (315 / 510) |
+| Validation split | 92 (35 / 57) |
+| Test split | 160 (80 / 80) |
+| Avg. report length | 321.6 ± 46.3 words |
 
-**Why image-only fails — per-class breakdown (the floor):**
+Six reasoning indicators are annotated per image (steps 2–4 of the CoT): vertical & transverse CDR
+(continuous), ISNT rim ranking, per-quadrant rim abnormality (3 ordinal levels × 4 quadrants), and
+six glaucomatous structural signs.
 
-| True class (n = 40) | → not likely | → borderline | → likely | Recall |
-|---|:---:|:---:|:---:|:---:|
-| **not likely** | **36** | 4 | 0 | 0.900 |
-| **borderline** | 31 | **7** | 2 | 0.175 |
-| **likely** | 33 | 7 | **0** | **0.000** |
+**Access.** The source photographs come from the two public datasets and must be obtained from
+their original providers under their own licences:
 
-The model collapses to a single strategy — **call almost everything "not likely."** It never
-correctly identifies a single true-glaucoma case (**likely recall = 0**); in fact across all
-120 images it output "likely" only twice, and both were wrong. Without the quantitative
-RETFound measurements, a general-purpose 27b VLM is effectively blind to glaucomatous cupping.
+| Source | Link |
+|---|---|
+| LAG (Large-scale Attention-based Glaucoma) | https://github.com/smilell/AG-CNN |
+| Papila | https://figshare.com/articles/dataset/PAPILA/14798004 |
 
-**Takeaway:** the RETFound *quantify-then-reason* pipeline is not optional polish — it is the
-source of the diagnostic signal. Feeding a strong VLM the raw image alone yields chance-level
-accuracy; structuring RETFound's CDR / ISNT / sign measurements into the prompt is what makes
-the 0.71 result possible.
+The expert six-step CoT annotations, the indicator labels and the train / val / test split ids are
+**not yet released**; they will be posted on the [project page](https://glaucoma-cot.github.io/)
+once the paper's review process finishes.
 
-### Confusion matrices — before vs after (visual)
+## Install
 
-<img src="reports/confmat_before_after.png" width="760">
+```bash
+git clone -b camera_ready_code https://github.com/kaichen-z/Optical-VLM.git
+cd Optical-VLM
+pip install -r requirements.txt          # pinned to the environment the paper was run in
+pip install -r evaluation/requirements-eval.txt   # only for report-quality metrics
+```
 
-*Confusion matrices on the 120-image balanced test set. Rows = true class, columns = predicted,
-color = row-normalized (recall), cells show raw count + row %, red box = diagonal (correct).
-**Left — before fine-tune** (zero-shot, image only, acc 0.358): collapses to "not likely"
-(first column), likely recall = 0. **Right — after fine-tune** (best run exp4, LoRA + RETFound
-indicators, acc 0.708): strong diagonal, borderline and likely recovered. Numbers identical to
-the two tables above (`eval_zeroshot_imageonly_vllm` / `eval_exp4`).*
+`requirements.txt` pins the CUDA 12.8 torch build; install the matching wheels from
+[pytorch.org](https://pytorch.org) if your setup differs. `transformers==5.1.0` is a hard floor —
+the code uses the `dtype=` argument, which older releases do not accept.
+
+## Base models
+
+Both stages are fine-tuned **on top of public pretrained checkpoints**. Our own trained weights are
+not released at this time; the checkpoints below are what you fine-tune *from*.
+
+| Stage | Base checkpoint | Notes |
+|---|---|---|
+| Stage 1 (RETFound) | [`YukunZhou/RETFound_mae_natureCFP`](https://huggingface.co/YukunZhou/RETFound_mae_natureCFP) | MAE ViT-L/16 (`RETFound_mae_natureCFP.pth`). Non-commercial licence. |
+| Stage 2 (MedGemma-27B) | [`google/medgemma-27b-it`](https://huggingface.co/google/medgemma-27b-it) | **Gated** — accept the Health AI Developer Foundations terms and authenticate first. |
+
+```bash
+huggingface-cli download YukunZhou/RETFound_mae_natureCFP
+huggingface-cli download google/medgemma-27b-it        # requires accepting the gated terms
+```
+
+Point `RETFOUND_CKPT` at the RETFound `.pth`, and pass the MedGemma snapshot with `--model-id`.
+
+## Quick Start
+
+Once both stages are trained (below), one fundus image → one six-step report:
+
+```bash
+python inference.py \
+    --stage1-ckpt retfound_finetune/outputs/tier2a_linear/best.pt \
+    --model-id google/medgemma-27b-it \
+    --adapter medgemma27b_finetune/outputs/mg27_lora \
+    --image path/to/fundus.jpg
+```
+
+## Layout
+
+```
+retfound_finetune/       Stage 1: train the RETFound heads, then predict the indicators
+medgemma27b_finetune/    Stage 2: LoRA fine-tune MedGemma-27B on the reasoning data
+evaluation/              Stage-1 indicator metrics + Stage-2 diagnosis / report-quality metrics
+inference.py             full image -> reasoning-chain pipeline
+```
+
+## Stage 1 — RETFound heads
+
+The backbone stays frozen; only a pooling module and the prediction heads are trained. Five
+poolings (`baseline`, `tier1`, `tier2a`, `tier2b`, `tier3`) and two head kinds (`linear`, `mlp`)
+are available; **`tier2a` + `linear` is the configuration used in the paper**.
+
+```bash
+cd retfound_finetune
+python train.py --pool tier2a --head linear --out outputs/tier2a_linear
+python predict_indicators.py \
+    --ckpt outputs/tier2a_linear/best.pt \
+    --images 'data/images/*.jpg' \
+    --out predicted_indicators.json
+```
+
+Training expects four CSV manifests (`isnt`, `cdr`, `signs`, `dx`) and an image folder; see
+`dataset.py` for the column names, and set the paths with the `DATA_ROOT` / `*_MANIFEST` /
+`PHOTOS_DIR` environment variables.
+
+## Stage 2 — MedGemma-27B
+
+LoRA sits on the language-model attention projections; the vision tower is frozen and the loss is
+computed on the assistant tokens only.
+
+```bash
+cd medgemma27b_finetune
+CUDA_VISIBLE_DEVICES=0,1 python train.py \
+    --model-id google/medgemma-27b-it \
+    --data data/sft_train.jsonl \
+    --photos data/images \
+    --out outputs/mg27_lora
+```
+
+Each line of `sft_train.jsonl` is one sample:
+
+```json
+{
+  "image": "<image id, resolves to <photos>/<id>.jpg>",
+  "system": "<system prompt>",
+  "prompt": "<query + Stage-1 indicator block>",
+  "target": "<six-step reasoning chain + diagnosis>",
+  "true_diagnosis": "likely | not likely",
+  "split": "train | val"
+}
+```
+
+Note that the Stage-1 indicators written into `prompt` are the **predicted** ones, so the model
+learns to reason from noisy measurements rather than from clean ground truth.
+
+## Evaluation
+
+`evaluation/` scores the two axes reported in the paper — see
+[`evaluation/README.md`](https://github.com/kaichen-z/Optical-VLM/blob/camera_ready_code/evaluation/README.md)
+for the full metric list.
+
+```bash
+# Stage 1 — clinical indicators (CDR MAE/RMSE/r, ISNT Kendall, rim macro-F1 + QWK, signs macro-F1)
+python evaluation/eval_indicators.py \
+    --pred predicted_indicators.json \
+    --cdr-manifest cdr_manifest.csv \
+    --isnt-manifest isnt_manifest.csv \
+    --signs-manifest signs_manifest.csv \
+    --split test --out stage1_metrics.json
+
+# Stage 2 (1) — parsed diagnosis: balanced accuracy / sensitivity / specificity / MCC
+python evaluation/eval_diagnosis.py --pred generations.jsonl --out diagnosis_metrics.json
+
+# Stage 2 (2) — report quality vs. the expert reference: BERTScore-F1 + ROUGE
+python evaluation/eval_report.py --pred generations.jsonl --out report_metrics.json
+```
+
+`generations.jsonl` is one JSON object per line:
+`{"id", "true_diagnosis": "likely"|"not likely", "generated": "<report>", "reference": "<expert report>"}`.
+
+## Acknowledgements
+
+Built on [RETFound](https://github.com/rmaphoh/RETFound_MAE) and
+[MedGemma](https://huggingface.co/google/medgemma-27b-it); the fundus photographs come from the
+[LAG](https://github.com/smilell/AG-CNN) and [Papila](https://figshare.com/articles/dataset/PAPILA/14798004)
+datasets. Thanks to the authors of these works and to the ophthalmologists who authored the 1,077
+expert reasoning reports.
+
+## Licence & intended use
+
+Research use only. This code is **not** a medical device and must not be used for clinical
+decision-making. The RETFound weights carry a non-commercial licence and MedGemma is distributed
+under the Health AI Developer Foundations terms; both apply to any derived checkpoint.
