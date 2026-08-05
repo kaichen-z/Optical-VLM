@@ -38,7 +38,7 @@ preferred-citation:
   type: article
   title: "Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images"
   journal: "medRxiv"
-publisher: "Cold Spring Harbor Laboratory Press"
+  publisher: "Cold Spring Harbor Laboratory Press"
   year: 2026
   authors:
     - family-names: Zhou
