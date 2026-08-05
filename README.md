@@ -5,7 +5,7 @@ A reasoning-driven vision–language framework that writes a <ins>**six-step cli
 before making the glaucoma decision — plus <ins>**BIOVLM**</ins>, the first expert-annotated<br>
 glaucoma reasoning dataset (1,077 fundus photographs).
 
-<a href="https://www.researchgate.net/publication/410997386_Learning_Ophthalmologist_Clinical_Reasoning_for_Glaucoma_Diagnosis_from_Fundus_Images"><img src="https://img.shields.io/badge/Paper-npj%20Digital%20Medicine-b31b1b" alt="Paper"></a>
+<a href="https://www.researchgate.net/publication/410997386_Learning_Ophthalmologist_Clinical_Reasoning_for_Glaucoma_Diagnosis_from_Fundus_Images"><img src="https://img.shields.io/badge/Paper-medRxiv-b31b1b" alt="Paper"></a>
 <a href="https://glaucoma-cot.github.io/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
 <a href="https://scholar.google.com/citations?view_op=view_citation&hl=en&user=8S6_34oAAAAJ&sortby=pubdate&citation_for_view=8S6_34oAAAAJ:UxriW0iASnsC"><img src="https://img.shields.io/badge/Google_Scholar-4285F4" alt="Google Scholar"></a>
 <a href="https://github.com/kaichen-z/Optical-VLM/stargazers"><img src="https://img.shields.io/github/stars/kaichen-z/Optical-VLM?style=flat&color=blue" alt="Stars"></a>
@@ -22,13 +22,15 @@ glaucoma reasoning dataset (1,077 fundus photographs).
 </div>
 
 ```bibtex
-@article{zhou2026glaucoma,
-  title   = {Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images},
-  author  = {Zhou, Kaichen and Chen, Yuzhen and Yildiz, Elif and Shi, Min and Dai, David
-             and Chen, Grace and Zheng, Jiale and Wang, He and Zhan, Fangneng and Saini, Chhavi
-             and Shen, Lucy Q. and Guo, Yike and Liang, Paul Pu and Wang, Mengyu},
-  journal = {npj Digital Medicine (under review)},
-  year    = {2026}
+@article{zhou2026learning,
+  title     = {Learning Ophthalmologist Clinical Reasoning for Glaucoma Diagnosis from Fundus Images},
+  author    = {Zhou, Kaichen and Chen, Yuzhen and Yildiz, Elif and Shi, Min and Dai, David
+               and Chen, Grace and Zheng, Jiale and Wang, He and Zhan, Fangneng and Saini, Chhavi
+               and Shen, Lucy Q. and Guo, Yike and Liang, Paul Pu and Wang, Mengyu},
+  journal   = {medRxiv},
+  pages     = {2026--07},
+  year      = {2026},
+  publisher = {Cold Spring Harbor Laboratory Press}
 }
 ```
 
@@ -101,24 +103,6 @@ All numbers on the 160-image test split (80 glaucoma / 80 non-glaucoma).
 | Qwen3.5-VL | 84.3% | 78.8–89.5 |
 | Claude | 74.4% | 67.5–81.0 |
 | GPT-5.5 | 71.9% | 65.1–78.2 |
-
-**Ablations — the reasoning stage is what carries the diagnosis**
-
-| Configuration | Bal. Acc. | Sens. | Spec. |
-|---|:---:|:---:|:---:|
-| Full framework | **94.69%** | 92.88% | 96.50% |
-| Abl. 1 — image only | 83.75% | 97.50% | 70.00% |
-| Abl. 2 — image + diagnosis probability only | 70.63% | 98.75% | 42.50% |
-
-| Leave-one-indicator-out | Bal. Acc. |
-|---|:---:|
-| Ours (all indicators) | **94.69%** |
-| − per-quadrant rim status | 94.38% |
-| − ISNT rim ordering | 94.37% |
-| − glaucomatous signs | 93.75% |
-| − cup-to-disc ratio | 92.50% |
-
-CDR is the single most informative cue; every indicator still contributes complementary signal.
 
 ## BIOVLM dataset
 
